@@ -167,3 +167,38 @@ Keep the game binary, raw decompilation exports, APKs, project files, login toke
 - Ghidra Headless Analyzer: https://github.com/NationalSecurityAgency/ghidra/blob/master/Ghidra/RuntimeScripts/support/analyzeHeadlessREADME.md
 - Ghidra DecompInterface: https://ghidra.re/ghidra_docs/api/ghidra/app/decompiler/DecompInterface.html
 - LegacyPE-Server project research: `docs/research/RE-0001_provenance.md`, `RE-0002_packet_ids.md`
+
+## Resumable full pipeline
+
+After completing import and the 100-function smoke test, run:
+
+```bash
+export GHIDRA_HOME=/path/to/ghidra_12.2_PUBLIC
+export RE_WORK=/private/path/mcpe-115-re-work
+bash tools/full_pipeline.sh
+```
+
+The pipeline uses four independent decompiler workers and an 8 GB Java heap
+(default, overridable with `GHIDRA_HEADLESS_MAXMEM`). Allow additional RAM for
+native decompiler processes. It records the exact internal-function address set,
+resumes existing atomic JSON exports, and retries interrupted export processes
+up to three times per phase. Failed functions are retried at 90 and 180 seconds,
+with increased instruction and payload limits. An exclusive `flock` prevents
+concurrent pipeline runs. After a machine restart, rerun the same command;
+completed exports are retained. Persistent process failures stop with logs.
+
+Each completed phase updates the SQLite index. Final verification compares the
+Ghidra address set against JSON and database records, checks SQLite/FTS integrity,
+and exercises name lookup, full-text search and pseudocode retrieval. It writes
+`ANALYSIS_REPORT.md`, `analysis-summary.json`, and `failures.json` under `RE_WORK`.
+These are private generated artifacts; do not commit them. The verifier expects
+the MCPE 1.1.5 SHA256 documented above. Remaining per-function failures are
+reported explicitly; a complete index does not imply every decompilation succeeds.
+
+To rerun verification without decompiling:
+
+```bash
+python3 tools/verify_report.py
+```
+
+Requires the existing Python/binutils dependencies plus Bash, `flock`, and `rg`.
